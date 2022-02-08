@@ -3,3 +3,5 @@
 JSON="{\"text\":\"How far is Los Angeles from New York?\"}"
 JSON2=`curl -s -X POST -d "$JSON" localhost:3001/alpha`
 echo $JSON2
+
+# curl -v -s -X POST -d '{"text":"How far is Los Angeles from New York?"}' localhost:3001/alpha

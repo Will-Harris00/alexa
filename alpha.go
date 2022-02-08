@@ -20,8 +20,9 @@ func Alpha(w http.ResponseWriter, r *http.Request) {
 		if text_query, ok := t["text"].(string); ok {
 			if response, err := Service(text_query); err == nil {
 				u := map[string]interface{}{"text": response}
+				w.Header().Set("Content-Type", "application/json") // return microservice response as json
 				w.WriteHeader(http.StatusOK)
-				json.NewEncoder(w).Encode(u)
+				json.NewEncoder(w).Encode(u) // encode string text as json object
 			} else {
 				w.WriteHeader(http.StatusInternalServerError)
 			}
