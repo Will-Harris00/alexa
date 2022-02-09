@@ -53,16 +53,55 @@ func Speech(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				println("Malformed input!")
 			}
-			text, _ := SpeechToText(bytes_slice)
+			body, _ := SpeechToText(bytes_slice)
 			// println(text)
-			STTResponse(w, text)
+			STTResponse(w, body)
 		}
 	}
 }
 
-func STTResponse(w http.ResponseWriter, text []byte) {
-	text_json := string(text)
-	u := map[string]interface{}{"text": text_json}
+func CheckReponse(body []byte) string {
+	t := map[string]interface{}{}
+	err := json.Unmarshal(body, &t)
+	if err != nil {
+		panic(err)
+	}
+
+	if rec_status, ok := t["RecognitionStatus"].(string); ok {
+		if rec_status == "Success" { // recognition was successful, and the DisplayText field is present.
+			if plain_text, ok := t["DisplayText"].(string); ok {
+				print(plain_text)
+				return plain_text
+			}
+		} else {
+			RecognitionStatus(rec_status)
+			panic("Text could not be determined!") // api failed to determine the correct text
+		}
+	} else {
+		panic("Object contains no field 'RecognitionStatus'") // handle error for incorrect json object
+	}
+	panic("Object does not contain 'DisplayText'") // failed to return text
+}
+
+func RecognitionStatus(rec_status string) {
+	// https://docs.microsoft.com/en-us/azure/cognitive-services/speech-service/rest-speech-to-text#pronunciation-assessment-parameters
+	// Determines the error type from the response parameters for RecognitionStatus
+	switch {
+	case rec_status == "NoMatch":
+		println("Speech was detected in the audio stream, but no words from the target language were matched. " +
+			"This status usually means that the recognition language is different from the language that the user is speaking.")
+	case rec_status == "InitialSilenceTimeout":
+		println("The start of the audio stream contained only silence, and the service timed out while waiting for speech.")
+	case rec_status == "BabbleTimeout":
+		println("The start of the audio stream contained only noise, and the service timed out while waiting for speech.")
+	case rec_status == "Error":
+		println("The recognition service encountered an internal error and could not continue. Try again if possible.")
+	}
+}
+
+func STTResponse(w http.ResponseWriter, body []byte) {
+	plain_text := CheckReponse(body)
+	u := map[string]interface{}{"text": plain_text}
 	w.Header().Set("Content-Type", "application/json") // return microservice response as json
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(u)
