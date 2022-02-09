@@ -18,7 +18,7 @@ const (
 	KEY = ""
 )
 
-func SpeechToText(speech []byte) (string, error) {
+func SpeechToText(speech []byte) ([]byte, error) {
 	client := &http.Client{}
 
 	req, _ := http.NewRequest("POST", URI, bytes.NewReader(speech))
@@ -31,11 +31,13 @@ func SpeechToText(speech []byte) (string, error) {
 
 	defer rsp.Body.Close()
 
+	println(rsp.StatusCode)
+
 	if rsp.StatusCode == http.StatusOK {
 		body, _ := ioutil.ReadAll(rsp.Body)
-		return string(body), nil
+		return body, nil
 	} else {
-		return "", errors.New("Cannot convert to speech to text!")
+		return nil, errors.New("Cannot convert to speech to text!")
 	}
 }
 
@@ -52,9 +54,18 @@ func Speech(w http.ResponseWriter, r *http.Request) {
 				println("Malformed input!")
 			}
 			text, _ := SpeechToText(bytes_slice)
-			println(text)
+			// println(text)
+			STTResponse(w, text)
 		}
 	}
+}
+
+func STTResponse(w http.ResponseWriter, text []byte) {
+	text_json := string(text)
+	u := map[string]interface{}{"text": text_json}
+	w.Header().Set("Content-Type", "application/json") // return microservice response as json
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(u)
 }
 
 func main() {
