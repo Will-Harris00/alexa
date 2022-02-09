@@ -15,7 +15,7 @@ const (
 	REGION = "uksouth"
 	URI    = "https://" + REGION + ".tts.speech.microsoft.com/" +
 		"cognitiveservices/v1"
-	KEY = "19c1cb3c0aa848608fed5a5a8a23d640"
+	KEY = ""
 )
 
 type Speak struct {
