@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"github.com/gorilla/mux"
 	"io/ioutil"
 	"net/http"
@@ -24,20 +23,21 @@ func SpeechToText(speech []byte) ([]byte, error) {
 	req, _ := http.NewRequest("POST", URI, bytes.NewReader(speech))
 
 	req.Header.Set("Content-Type",
-		"audio/wav;codecs=audio/pcm;samplerate=16000;base64")
+		"audio/wav;codecs=audio/pcm;samplerate=16000")
 	req.Header.Set("Ocp-Apim-Subscription-Key", KEY)
 
 	rsp, _ := client.Do(req)
 
 	defer rsp.Body.Close()
 
-	println(rsp.StatusCode)
+	//println(rsp.StatusCode)
 
 	if rsp.StatusCode == http.StatusOK {
 		body, _ := ioutil.ReadAll(rsp.Body)
 		return body, nil
 	} else {
-		return nil, errors.New("Cannot convert to speech to text!")
+		println("Did you forget to include a valid api key?")
+		panic("cannot convert to speech to text!")
 	}
 }
 
@@ -49,11 +49,11 @@ func Speech(w http.ResponseWriter, r *http.Request) {
 			// DecodeString takes a base64 encoded string and returns the decoded data as a byte slice.
 			// It will also return an error in case the input string has invalid base64 data.
 			// StdEncoding: standard base64 encoding
-			bytes_slice, err := base64.StdEncoding.DecodeString(speech)
+			byte_slice, err := base64.StdEncoding.DecodeString(speech)
 			if err != nil {
 				println("Malformed input!")
 			}
-			body, _ := SpeechToText(bytes_slice)
+			body, _ := SpeechToText(byte_slice)
 			// println(text)
 			STTResponse(w, body)
 		}
@@ -70,20 +70,21 @@ func CheckReponse(body []byte) string {
 	if rec_status, ok := t["RecognitionStatus"].(string); ok {
 		if rec_status == "Success" { // recognition was successful, and the DisplayText field is present.
 			if plain_text, ok := t["DisplayText"].(string); ok {
-				print(plain_text)
+				println(plain_text)
 				return plain_text
+			} else {
+				panic("Object contains no field 'DisplayText'") // handle error for incorrect json object
 			}
 		} else {
-			RecognitionStatus(rec_status)
+			DetermineError(rec_status)
 			panic("Text could not be determined!") // api failed to determine the correct text
 		}
 	} else {
 		panic("Object contains no field 'RecognitionStatus'") // handle error for incorrect json object
 	}
-	panic("Object does not contain 'DisplayText'") // failed to return text
 }
 
-func RecognitionStatus(rec_status string) {
+func DetermineError(rec_status string) {
 	// https://docs.microsoft.com/en-us/azure/cognitive-services/speech-service/rest-speech-to-text#pronunciation-assessment-parameters
 	// Determines the error type from the response parameters for RecognitionStatus
 	switch {
@@ -107,10 +108,6 @@ func STTResponse(w http.ResponseWriter, body []byte) {
 	json.NewEncoder(w).Encode(u)
 }
 
-func main() {
-	STTHandler()
-}
-
 func STTHandler() {
 	r := mux.NewRouter()
 	// document
@@ -119,4 +116,8 @@ func STTHandler() {
 	//	3001 / alpha
 	//	3002 / stt
 	//	3003 / tts
+}
+
+func main() {
+	STTHandler()
 }
