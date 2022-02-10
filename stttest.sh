@@ -1,5 +1,4 @@
 #!/bin/sh
-JSON="{\"speech\":\"`base64 -i speech.wav`\"}"
-JSON2=`curl -s -X POST -d "$JSON" localhost:3002/stt`
+echo "{\"speech\":\"`base64 -i speech.wav`\"}" > input
+JSON2=`curl -s -X POST -d @input localhost:3002/stt`
 echo $JSON2
-
