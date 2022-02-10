@@ -49,12 +49,15 @@ func Speech(w http.ResponseWriter, r *http.Request) {
 			// DecodeString takes a base64 encoded string and returns the decoded data as a byte slice.
 			// It will also return an error in case the input string has invalid base64 data.
 			// StdEncoding: standard base64 encoding
+			if len(speech) < 5 || speech[0:5] != "UklGR" { // all wav files start with "UklGR" in base 64 standard encoding
+				panic("Not a valid wav audio encoding!")
+			}
 			byte_slice, err := base64.StdEncoding.DecodeString(speech)
 			if err != nil {
-				println("Malformed input!")
+				panic("Malformed input!")
 			}
 			body, _ := SpeechToText(byte_slice)
-			// println(text)
+			// println(speech)
 			STTResponse(w, body)
 		}
 	}
@@ -69,9 +72,9 @@ func CheckReponse(body []byte) string {
 
 	if rec_status, ok := t["RecognitionStatus"].(string); ok {
 		if rec_status == "Success" { // recognition was successful, and the DisplayText field is present.
-			if plain_text, ok := t["DisplayText"].(string); ok {
-				println(plain_text)
-				return plain_text
+			if question_text, ok := t["DisplayText"].(string); ok {
+				println(question_text)
+				return question_text
 			} else {
 				panic("Object contains no field 'DisplayText'") // handle error for incorrect json object
 			}
@@ -101,8 +104,8 @@ func DetermineError(rec_status string) {
 }
 
 func STTResponse(w http.ResponseWriter, body []byte) {
-	plain_text := CheckReponse(body)
-	u := map[string]interface{}{"text": plain_text}
+	question_text := CheckReponse(body)
+	u := map[string]interface{}{"text": question_text}
 	w.Header().Set("Content-Type", "application/json") // return microservice response as json
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(u)

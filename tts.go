@@ -6,9 +6,12 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"errors"
+	"fmt"
 	"github.com/gorilla/mux"
+	"io"
 	"io/ioutil"
 	"net/http"
+	"os"
 )
 
 const (
@@ -75,12 +78,12 @@ func SpeechEncoding(body []byte) (encoded_speech string) {
 	return encoded_speech
 }
 
-func Text(w http.ResponseWriter, r *http.Request) {
+func ExtractText(w http.ResponseWriter, r *http.Request) {
 	t := map[string]interface{}{}
 	if err := json.NewDecoder(r.Body).Decode(&t); err == nil {
-		if text, ok := t["text"].(string); ok {
-			println(text)
-			ssml := CreateSSML(text)
+		if answer_text, ok := t["text"].(string); ok {
+			println(answer_text)
+			ssml := CreateSSML(answer_text) // Speech Synthesis Markup Language
 			body, _ := TextToSpeech(ssml)
 			TTSResponse(w, body)
 		}
@@ -98,7 +101,7 @@ func TTSResponse(w http.ResponseWriter, body []byte) {
 func TTSHandler() {
 	r := mux.NewRouter()
 	// document
-	r.HandleFunc("/tts", Text).Methods("POST")
+	r.HandleFunc("/tts", ExtractText).Methods("POST")
 	http.ListenAndServe(":3003", r)
 	//	3001 / alpha
 	//	3002 / stt
@@ -126,20 +129,23 @@ func CreateSSML(text string) []byte {
 
 	text_xml, _ := xml.MarshalIndent(speak, "", "    ")
 
-	// print to file if required for testing
-	//filename := "text.xml"
-	//file, _ := os.Create(filename)
-	//
-	//xmlWriter := io.Writer(file)
-	//
-	//enc := xml.NewEncoder(xmlWriter)
-	//enc.Indent("", "    ")
-	//if err := enc.Encode(text_xml); err != nil {
-	//	fmt.Printf("error: %v\n", err)
-	//}
-
+	// PrintToFile(text_xml)
 	// println(string(text_xml))
 	return text_xml
+}
+
+func PrintToFile(text_xml []byte) {
+	// print to file if required for testing
+	filename := "text.xml"
+	file, _ := os.Create(filename)
+
+	xmlWriter := io.Writer(file)
+
+	enc := xml.NewEncoder(xmlWriter)
+	enc.Indent("", "    ")
+	if err := enc.Encode(text_xml); err != nil {
+		fmt.Printf("error: %v\n", err)
+	}
 }
 
 func main() {

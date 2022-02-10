@@ -35,6 +35,7 @@ func Alpha(w http.ResponseWriter, r *http.Request) {
 }
 
 func AlphaService(text_query string) (interface{}, error) {
+	println(text_query)                                                      // check the question
 	alpha_uri := URI + "?appid=" + KEY + "&i=" + url.QueryEscape(text_query) // html encoded string
 
 	response, err := http.Get(alpha_uri)
@@ -51,8 +52,8 @@ func AlphaService(text_query string) (interface{}, error) {
 
 	responseString := string(responseData)
 
-	println(response.Body)
-	println(responseData)
+	// println(response.Body)
+	// println(responseData)
 	println(responseString)
 
 	return responseString, nil
