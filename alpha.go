@@ -11,14 +11,14 @@ import (
 
 const (
 	URI = "http://api.wolframalpha.com/v1/result"
-	KEY = "DEMO"
+	KEY = ""
 )
 
 func Alpha(w http.ResponseWriter, r *http.Request) {
 	t := map[string]interface{}{}
 	if err := json.NewDecoder(r.Body).Decode(&t); err == nil {
 		if text_query, ok := t["text"].(string); ok {
-			if response, err := Service(text_query); err == nil {
+			if response, err := AlphaService(text_query); err == nil {
 				u := map[string]interface{}{"text": response}
 				w.Header().Set("Content-Type", "application/json") // return microservice response as json
 				w.WriteHeader(http.StatusOK)
@@ -34,21 +34,10 @@ func Alpha(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func Service(text_query string) (interface{}, error) {
-	//client := &http.Client{}
-	uri := URI + "?appid=" + KEY + "&i=" + url.QueryEscape(text_query) // html encoded string
-	println(uri)
-	//if req, err := http.NewRequest("GET", uri, nil); err == nil {
-	//	if rsp, err := client.Do(req); err == nil {
-	//		if rsp.StatusCode == http.StatusOK {
-	//			t := map[string]interface{}{}
-	//			if err := json.NewDecoder(rsp.Body).Decode(&t); err == nil {
-	//				return t["response"], nil
-	//			}
-	//		}
-	//	}
-	//}
-	response, err := http.Get(uri)
+func AlphaService(text_query string) (interface{}, error) {
+	alpha_uri := URI + "?appid=" + KEY + "&i=" + url.QueryEscape(text_query) // html encoded string
+
+	response, err := http.Get(alpha_uri)
 	if err != nil {
 		log.Fatal(err)
 	}

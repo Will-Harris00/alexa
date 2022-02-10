@@ -37,7 +37,7 @@ func SpeechToText(speech []byte) ([]byte, error) {
 		return body, nil
 	} else {
 		println("Did you forget to include a valid api key?")
-		panic("cannot convert to speech to text!")
+		panic("cannot convert speech to text!")
 	}
 }
 
