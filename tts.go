@@ -6,12 +6,9 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"errors"
-	"fmt"
 	"github.com/gorilla/mux"
-	"io"
 	"io/ioutil"
 	"net/http"
-	"os"
 )
 
 const (
@@ -21,15 +18,22 @@ const (
 	KEY = ""
 )
 
-type Speak struct {
-	XMLName xml.Name `xml:"speak"`
-	Version string   `xml:"version,attr"`
-	Lang    string   `xml:"xml:lang,attr"`
-	Voice   struct {
-		Text string `xml:",chardata"`
-		Lang string `xml:"xml:lang,attr"`
-		Name string `xml:"name,attr"`
-	} `xml:"voice"`
+type speak struct {
+	Version string `xml:"version,attr"`
+	Lang    string `xml:"xml:lang,attr"`
+	Voice   voice  `xml:"voice"`
+}
+
+type voice struct {
+	Voice string `xml:",chardata"`
+	Lang  string `xml:"xml:lang,attr"`
+	Name  string `xml:"name,attr"`
+}
+
+func check(e error) {
+	if e != nil {
+		panic(e)
+	}
 }
 
 func TextToSpeech(text []byte) ([]byte, error) {
@@ -49,12 +53,12 @@ func TextToSpeech(text []byte) ([]byte, error) {
 		body, _ := ioutil.ReadAll(rsp.Body)
 		return body, nil
 	} else {
-		ResponseError(rsp.StatusCode)
+		CheckStatusError(rsp.StatusCode)
 		return nil, errors.New("cannot convert text to speech")
 	}
 }
 
-func ResponseError(err_status int) {
+func CheckStatusError(err_status int) {
 	// error handling for each status code
 	if err_status == 400 {
 		panic("Bad request - A required parameter is missing, empty, or null. " +
@@ -109,43 +113,20 @@ func TTSHandler() {
 }
 
 func CreateSSML(text string) []byte {
-	speak := &Speak{
+	speak := &speak{
 		Version: "1.0",
 		Lang:    "en-US",
-		Voice: struct {
-			Text string `xml:",chardata"`
-			Lang string `xml:"xml:lang,attr"`
-			Name string `xml:"name,attr"`
-		}(struct {
-			Text string
-			Lang string
-			Name string
-		}{
-			Text: text,
-			Lang: "en-US",
-			Name: "en-US-JennyNeural",
-		}),
+		Voice: voice{
+			Voice: text,
+			Lang:  "en-US",
+			Name:  "en-US-JennyNeural",
+		},
 	}
 
 	text_xml, _ := xml.MarshalIndent(speak, "", "    ")
 
-	// PrintToFile(text_xml)
 	// println(string(text_xml))
 	return text_xml
-}
-
-func PrintToFile(text_xml []byte) {
-	// print to file if required for testing
-	filename := "text.xml"
-	file, _ := os.Create(filename)
-
-	xmlWriter := io.Writer(file)
-
-	enc := xml.NewEncoder(xmlWriter)
-	enc.Indent("", "    ")
-	if err := enc.Encode(text_xml); err != nil {
-		fmt.Printf("error: %v\n", err)
-	}
 }
 
 func main() {
