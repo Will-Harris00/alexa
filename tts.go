@@ -85,11 +85,6 @@ func CheckStatusError(err_status int) {
 	}
 }
 
-func SpeechEncoding(body []byte) (encoded_speech string) {
-	encoded_speech = base64.StdEncoding.EncodeToString(body)
-	return encoded_speech
-}
-
 func ExtractText(w http.ResponseWriter, r *http.Request) {
 	t := map[string]interface{}{}
 	if err := json.NewDecoder(r.Body).Decode(&t); err == nil {
@@ -98,7 +93,8 @@ func ExtractText(w http.ResponseWriter, r *http.Request) {
 			println(answer_text)
 			ssml := CreateSSML(w, answer_text) // Speech Synthesis Markup Language
 			body := TextToSpeech(w, ssml)
-			TTSResponse(w, body)
+			encoded_speech := base64.StdEncoding.EncodeToString(body) // converts the string to base64 encoded wav
+			TTSResponse(w, encoded_speech)
 		}
 	}
 }
@@ -121,8 +117,7 @@ func CreateSSML(w http.ResponseWriter, text string) []byte {
 	return text_xml
 }
 
-func TTSResponse(w http.ResponseWriter, body []byte) {
-	encoded_speech := SpeechEncoding(body)
+func TTSResponse(w http.ResponseWriter, encoded_speech string) {
 	u := map[string]interface{}{"speech": encoded_speech}
 	w.Header().Set("Content-Type", "application/json") // return microservice response as json
 	w.WriteHeader(http.StatusOK)
