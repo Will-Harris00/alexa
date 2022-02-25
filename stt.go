@@ -25,6 +25,32 @@ func CheckErr(w http.ResponseWriter, e error, err_resp int) {
 	}
 }
 
+func SpeechDecoding(w http.ResponseWriter, r *http.Request) []byte {
+	t := map[string]interface{}{}
+	err := json.NewDecoder(r.Body).Decode(&t)
+	CheckErr(w, err, http.StatusBadRequest) // could not decode json response due to perceived client error
+
+	question_speech, ok := t["speech"].(string)
+
+	if !ok { // speech field is not present
+		err = errors.New("Object contains no field 'speech'") // handle error for incorrect json object
+		CheckErr(w, err, http.StatusBadRequest)
+	}
+
+	// println(len(speech)) # check the entire base64 string is read
+	if len(question_speech) < 5 || question_speech[0:5] != "UklGR" { // all wav files start with "UklGR" in base 64 standard encoding
+		err = errors.New("Not a valid wav audio encoding!") // the audio file is invalid
+		CheckErr(w, err, http.StatusBadRequest)
+	}
+
+	// DecodeString takes a base64 encoded string and returns the decoded data as a byte slice.
+	// It will also return an error in case the input string has invalid base64 data.
+	// StdEncoding: standard base64 encoding
+	decoded_speech, err := base64.StdEncoding.DecodeString(question_speech)
+	CheckErr(w, err, http.StatusBadRequest) // could not encode speech due to malformed input perceived to be client error
+	return decoded_speech
+}
+
 func SpeechToText(w http.ResponseWriter, speech []byte) []byte {
 	client := &http.Client{}
 	req, err := http.NewRequest("POST", URI, bytes.NewReader(speech))
@@ -40,17 +66,43 @@ func SpeechToText(w http.ResponseWriter, speech []byte) []byte {
 
 	// the request was not successful
 	if rsp.StatusCode != http.StatusOK {
-		CheckStatusError(rsp.StatusCode) // long text error message
+		CheckStatusErr(rsp.StatusCode) // long text error message
 		err = errors.New("Cannot convert speech to text!")
 		CheckErr(w, err, rsp.StatusCode) // pass the microsoft error code to our own microservice response header
 	}
 
-	body, err := ioutil.ReadAll(rsp.Body)
+	response_text, err := ioutil.ReadAll(rsp.Body)
 	CheckErr(w, err, http.StatusBadRequest) // the server cannot process the request due to something that is perceived to be a client error
-	return body
+	return response_text
 }
 
-func CheckStatusError(err_status int) {
+func CheckResponse(w http.ResponseWriter, body []byte) string {
+	t := map[string]interface{}{}
+	err := json.Unmarshal(body, &t)
+	CheckErr(w, err, http.StatusBadRequest) // could not decode json response due to perceived client error
+
+	rec_status, ok := t["RecognitionStatus"].(string)
+	if !ok { // RecognitionStatus field is not present
+		err = errors.New("Object contains no field 'RecognitionStatus'") // handle error for incorrect json object
+		CheckErr(w, err, http.StatusBadRequest)
+	}
+
+	if rec_status != "Success" { // recognition was not successful
+		RecognitionErr(rec_status)
+		err = errors.New("Text could not be determined!") // microsoft stt api failed to determine the correct text
+		CheckErr(w, err, http.StatusBadRequest)
+	}
+
+	question_text, ok := t["DisplayText"].(string)
+	if !ok { // DisplayText field is not present.
+		err = errors.New("Object contains no field 'DisplayText'") // handle error for incorrect json object
+		CheckErr(w, err, http.StatusBadRequest)
+	}
+	println(question_text)
+	return question_text
+}
+
+func CheckStatusErr(err_status int) {
 	// https://docs.microsoft.com/en-us/azure/cognitive-services/speech-service/rest-speech-to-text
 	// error handling for each status code
 	// println(rsp.StatusCode)
@@ -67,54 +119,7 @@ func CheckStatusError(err_status int) {
 	}
 }
 
-func SpeechDecoding(w http.ResponseWriter, r *http.Request) {
-	t := map[string]interface{}{}
-	if err := json.NewDecoder(r.Body).Decode(&t); err == nil {
-		if speech, ok := t["speech"].(string); ok {
-			// println(len(speech)) # check the entire base64 string is read
-			// DecodeString takes a base64 encoded string and returns the decoded data as a byte slice.
-			// It will also return an error in case the input string has invalid base64 data.
-			// StdEncoding: standard base64 encoding
-			if len(speech) < 5 || speech[0:5] != "UklGR" { // all wav files start with "UklGR" in base 64 standard encoding
-				err = errors.New("Not a valid wav audio encoding!")
-				CheckErr(w, err, http.StatusBadRequest) // the audio file is invalid
-			}
-			byte_slice, err := base64.StdEncoding.DecodeString(speech)
-			CheckErr(w, err, http.StatusBadRequest) // could not encode speech due to malformed input perceived to be client error
-			body := SpeechToText(w, byte_slice)
-			// println(speech)
-			STTResponse(w, body)
-		}
-	}
-}
-
-func CheckResponse(w http.ResponseWriter, body []byte) string {
-	t := map[string]interface{}{}
-	err := json.Unmarshal(body, &t)
-	CheckErr(w, err, http.StatusBadRequest) // could not decode json response due to perceived client error
-
-	rec_status, ok := t["RecognitionStatus"].(string)
-	if !ok { // RecognitionStatus field is not present
-		err = errors.New("Object contains no field 'RecognitionStatus'") // handle error for incorrect json object
-		CheckErr(w, err, http.StatusBadRequest)
-	}
-
-	if rec_status != "Success" { // recognition was not successful
-		DetermineError(rec_status)
-		err = errors.New("Text could not be determined!") // microsoft stt api failed to determine the correct text
-		CheckErr(w, err, http.StatusBadRequest)
-	}
-
-	question_text, ok := t["DisplayText"].(string)
-	if !ok { // DisplayText field is not present.
-		err = errors.New("Object contains no field 'DisplayText'") // handle error for incorrect json object
-		CheckErr(w, err, http.StatusBadRequest)
-	}
-	println(question_text)
-	return question_text
-}
-
-func DetermineError(rec_status string) {
+func RecognitionErr(rec_status string) {
 	// https://docs.microsoft.com/en-us/azure/cognitive-services/speech-service/rest-speech-to-text#pronunciation-assessment-parameters
 	// Determines the error type from the response parameters for RecognitionStatus
 	switch {
@@ -130,18 +135,24 @@ func DetermineError(rec_status string) {
 	}
 }
 
-func STTResponse(w http.ResponseWriter, body []byte) {
-	question_text := CheckResponse(w, body)
+func STTResponse(w http.ResponseWriter, question_text string) {
 	u := map[string]interface{}{"text": question_text}
 	w.Header().Set("Content-Type", "application/json") // return microservice response as json
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(u)
 }
 
+func ProcessSTT(w http.ResponseWriter, r *http.Request) {
+	decoded_speech := SpeechDecoding(w, r)
+	response_text := SpeechToText(w, decoded_speech)
+	question_text := CheckResponse(w, response_text)
+	STTResponse(w, question_text)
+}
+
 func STTHandler() {
 	r := mux.NewRouter()
 	// document
-	r.HandleFunc("/stt", SpeechDecoding).Methods("POST")
+	r.HandleFunc("/stt", ProcessSTT).Methods("POST")
 	http.ListenAndServe(":3002", r)
 	//	3001 / alpha
 	//	3002 / stt
