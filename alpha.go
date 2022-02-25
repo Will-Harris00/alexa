@@ -13,33 +13,31 @@ const (
 	KEY = ""
 )
 
-func check(e error) {
+func CheckErr(w http.ResponseWriter, e error, err_resp int) {
 	if e != nil {
-		panic(e)
+		println(e.Error())
+		w.WriteHeader(err_resp) // tells our microservice what error response code to return
 	}
 }
 
-func Alpha(w http.ResponseWriter, r *http.Request) {
+func ProcessAlpha(w http.ResponseWriter, r *http.Request) {
 	t := map[string]interface{}{}
 	err := json.NewDecoder(r.Body).Decode((&t))
-	check(err)
+	CheckErr(w, err, http.StatusBadRequest)
 
 	textQuery := t["text"].(string)
 
-	alphaResponse, wolframStatus := AlphaService(textQuery)
+	alphaResponse, wolframStatus := AlphaService(w, textQuery)
 
-	u := map[string]interface{}{"text": alphaResponse}
-	w.Header().Set("Content-Type", "application/json") // return microservice response as json
-	w.WriteHeader(wolframStatus)                       // copy the status code returned from wolfram alpha short answers api
-	json.NewEncoder(w).Encode(u)                       // encode string text as json object
+	AlphaResponse(w, alphaResponse, wolframStatus)
 }
 
-func AlphaService(textQuery string) (interface{}, int) {
+func AlphaService(w http.ResponseWriter, textQuery string) (string, int) {
 	println(textQuery)                                                     // check the question
 	alphaURI := URI + "?appid=" + KEY + "&i=" + url.QueryEscape(textQuery) // html encoded string
 
 	wolframResponse, err := http.Get(alphaURI)
-	check(err)
+	CheckErr(w, err, http.StatusBadRequest)
 
 	CheckStatusError(wolframResponse.StatusCode)
 	// println(wolframResponse.StatusCode) // determine if the wolfram alpha api returned the correct response
@@ -47,7 +45,7 @@ func AlphaService(textQuery string) (interface{}, int) {
 	defer wolframResponse.Body.Close() // delay the execution of the function until the nearby functions returns
 
 	responseData, err := ioutil.ReadAll(wolframResponse.Body) // read the body of the response returned from the wolfram api
-	check(err)
+	CheckErr(w, err, http.StatusBadRequest)
 
 	responseString := string(responseData)
 	println(responseString)
@@ -73,9 +71,16 @@ func CheckStatusError(status int) {
 	}
 }
 
+func AlphaResponse(w http.ResponseWriter, alphaResponse string, wolframStatus int) {
+	u := map[string]interface{}{"text": alphaResponse}
+	w.Header().Set("Content-Type", "application/json") // return microservice response as json
+	w.WriteHeader(wolframStatus)                       // copy the status code returned from wolfram alpha short answers api
+	json.NewEncoder(w).Encode(u)                       // encode string text as json object
+}
+
 func main() {
 	r := mux.NewRouter()
 	// document
-	r.HandleFunc("/alpha", Alpha).Methods("POST")
+	r.HandleFunc("/alpha", ProcessAlpha).Methods("POST")
 	http.ListenAndServe(":3001", r)
 }
