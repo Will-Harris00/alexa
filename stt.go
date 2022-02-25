@@ -20,7 +20,7 @@ const (
 
 func CheckErr(w http.ResponseWriter, e error, err_resp int) {
 	if e != nil {
-		println(e)
+		println(e.Error())
 		w.WriteHeader(err_resp) // tells our microservice what error response code to return
 	}
 }
@@ -38,17 +38,16 @@ func SpeechToText(w http.ResponseWriter, speech []byte) []byte {
 
 	defer rsp.Body.Close() // defer ensures the response body is closed even in case of runtime error during parsing of response
 
-	// the request was successful
-	if rsp.StatusCode == http.StatusOK {
-		body, err := ioutil.ReadAll(rsp.Body)
-		CheckErr(w, err, http.StatusBadRequest) // the server cannot process the request due to something that is perceived to be a client error
-		return body
-	} else {
+	// the request was not successful
+	if rsp.StatusCode != http.StatusOK {
 		CheckStatusError(rsp.StatusCode) // long text error message
 		err = errors.New("Cannot convert speech to text!")
 		CheckErr(w, err, rsp.StatusCode) // pass the microsoft error code to our own microservice response header
 	}
-	return nil
+
+	body, err := ioutil.ReadAll(rsp.Body)
+	CheckErr(w, err, http.StatusBadRequest) // the server cannot process the request due to something that is perceived to be a client error
+	return body
 }
 
 func CheckStatusError(err_status int) {
@@ -89,30 +88,30 @@ func SpeechDecoding(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func CheckReponse(w http.ResponseWriter, body []byte) string {
+func CheckResponse(w http.ResponseWriter, body []byte) string {
 	t := map[string]interface{}{}
 	err := json.Unmarshal(body, &t)
 	CheckErr(w, err, http.StatusBadRequest) // could not decode json response due to perceived client error
 
-	if rec_status, ok := t["RecognitionStatus"].(string); ok {
-		if rec_status == "Success" { // recognition was successful, and the DisplayText field is present.
-			if question_text, ok := t["DisplayText"].(string); ok {
-				println(question_text)
-				return question_text
-			} else {
-				err = errors.New("Object contains no field 'DisplayText'") // handle error for incorrect json object
-				CheckErr(w, err, http.StatusBadRequest)
-			}
-		} else {
-			DetermineError(rec_status)
-			err = errors.New("Text could not be determined!") // microsoft stt api failed to determine the correct text
-			CheckErr(w, err, http.StatusBadRequest)
-		}
-	} else {
+	rec_status, ok := t["RecognitionStatus"].(string)
+	if !ok { // RecognitionStatus field is not present
 		err = errors.New("Object contains no field 'RecognitionStatus'") // handle error for incorrect json object
 		CheckErr(w, err, http.StatusBadRequest)
 	}
-	return ""
+
+	if rec_status != "Success" { // recognition was not successful
+		DetermineError(rec_status)
+		err = errors.New("Text could not be determined!") // microsoft stt api failed to determine the correct text
+		CheckErr(w, err, http.StatusBadRequest)
+	}
+
+	question_text, ok := t["DisplayText"].(string)
+	if !ok { // DisplayText field is not present.
+		err = errors.New("Object contains no field 'DisplayText'") // handle error for incorrect json object
+		CheckErr(w, err, http.StatusBadRequest)
+	}
+	println(question_text)
+	return question_text
 }
 
 func DetermineError(rec_status string) {
@@ -132,7 +131,7 @@ func DetermineError(rec_status string) {
 }
 
 func STTResponse(w http.ResponseWriter, body []byte) {
-	question_text := CheckReponse(w, body)
+	question_text := CheckResponse(w, body)
 	u := map[string]interface{}{"text": question_text}
 	w.Header().Set("Content-Type", "application/json") // return microservice response as json
 	w.WriteHeader(http.StatusOK)
