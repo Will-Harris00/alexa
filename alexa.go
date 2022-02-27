@@ -3,84 +3,106 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"github.com/gorilla/mux"
 	"io"
 	"io/ioutil"
 	"net/http"
 )
 
-func Alexa(w http.ResponseWriter, r *http.Request) {
-	stt_rsp := SpeechToTextManager(r)
-	alpha_rsp := AlphaManager(stt_rsp)
-	tts_rsp_body := TextToSpeechManager(alpha_rsp)
-	AlexaResponse(w, tts_rsp_body)
+func CheckErr(w http.ResponseWriter, e error, err_resp int) {
+	if e != nil {
+		println(e.Error())
+		w.WriteHeader(err_resp) // tells our microservice what error response code to return
+	}
 }
 
-func SpeechToTextManager(r *http.Request) []byte {
-	stt_uri := "http://localhost:3002/stt"
-
-	req, _ := http.NewRequest("POST", stt_uri, r.Body)
-	req.Header.Set("Content-Type", "application/json")
-
-	rsp, _ := http.DefaultClient.Do(req)
-
-	if rsp.StatusCode != http.StatusOK {
-		panic("Something went wrong with the speech-to-text microservice!")
-	}
-
-	defer rsp.Body.Close()
-
-	if rsp.StatusCode == http.StatusOK {
-		rsp_body, _ := ioutil.ReadAll(rsp.Body)
-		// println(string(rsp_body)) // check response is received from speech-to-text microservice
-		return rsp_body
-	}
-	return nil
+func ProcessAlexa(w http.ResponseWriter, r *http.Request) {
+	sttRespBody := SpeechToTextManager(w, r)
+	alphaRespBody := AlphaManager(w, sttRespBody)
+	ttsRespBody := TextToSpeechManager(w, alphaRespBody)
+	AlexaResponse(w, ttsRespBody)
 }
 
-func AlphaManager(stt_rsp []byte) io.ReadCloser {
-	alpha_uri := "http://localhost:3001/alpha"
+func SpeechToTextManager(w http.ResponseWriter, r *http.Request) []byte {
+	sttUri := "http://localhost:3002/stt"
 
-	req, _ := http.NewRequest("POST", alpha_uri, bytes.NewReader(stt_rsp))
-	req.Header.Set("Content-Type", "application/json")
+	sttReq, err := http.NewRequest("POST", sttUri, r.Body)
+	CheckErr(w, err, http.StatusBadRequest) // the request was malformed
 
-	alpha_rsp, _ := http.DefaultClient.Do(req)
+	sttReq.Header.Set("Content-Type", "application/json")
 
-	if alpha_rsp.StatusCode != http.StatusOK {
-		panic("Something went wrong with the alpha microservice!")
+	sttResp, err := http.DefaultClient.Do(sttReq)
+	CheckErr(w, err, http.StatusBadRequest) // the server did not understand the request
+
+	if sttResp.StatusCode != http.StatusOK {
+		err := errors.New("Something went wrong with the speech-to-text microservice!") // handle error for failed stt query
+		CheckErr(w, err, sttResp.StatusCode)                                            // pass the stt error code to the alexa microservice response header
 	}
 
-	return alpha_rsp.Body
+	defer sttResp.Body.Close()
+
+	sttRespBody, err := ioutil.ReadAll(sttResp.Body) // read the body of the response returned from the stt microservice
+	CheckErr(w, err, http.StatusBadRequest)
+	println(string(sttRespBody)) // check response is received from speech-to-text microservice
+
+	return sttRespBody
 }
 
-func TextToSpeechManager(alpha_rsp io.ReadCloser) []byte {
-	tts_uri := "http://localhost:3003/tts"
+func AlphaManager(w http.ResponseWriter, stt_rsp []byte) io.ReadCloser {
+	alphaUri := "http://localhost:3001/alpha"
 
-	req, _ := http.NewRequest("POST", tts_uri, alpha_rsp)
-	req.Header.Set("Content-Type", "application/json")
+	alphaReq, err := http.NewRequest("POST", alphaUri, bytes.NewReader(stt_rsp))
+	CheckErr(w, err, http.StatusBadRequest) // the request was malformed
 
-	tts_rsp, _ := http.DefaultClient.Do(req)
+	alphaReq.Header.Set("Content-Type", "application/json")
 
-	if tts_rsp.StatusCode != http.StatusOK {
-		panic("Something went wrong with the text-to-speech microservice!")
+	alphaResp, err := http.DefaultClient.Do(alphaReq)
+	CheckErr(w, err, http.StatusBadRequest) // the server did not understand the request
+
+	if alphaResp.StatusCode != http.StatusOK {
+		err := errors.New("Something went wrong with the alpha microservice!") // handle error for failed stt query
+		CheckErr(w, err, alphaResp.StatusCode)                                 // pass the stt error code to the alexa microservice response header
 	}
 
-	defer tts_rsp.Body.Close()
+	//// we can use this for testing, but we don't actually need to decode the response at this time
+	//defer alphaResp.Body.Close()
+	//alphaRespBody, err := ioutil.ReadAll(alphaResp.Body) // read the body of the response returned from the stt microservice
+	//CheckErr(w, err, http.StatusBadRequest)
+	//println(alphaRespBody) // check response is received from speech-to-text microservice
 
-	if tts_rsp.StatusCode == http.StatusOK {
-		rsp_body, _ := ioutil.ReadAll(tts_rsp.Body)
-		// println(string(rsp_body)) // check response is received from speech-to-text microservice
-		return rsp_body
-	}
-	return nil
+	return alphaResp.Body
 }
 
-func AlexaResponse(w http.ResponseWriter, tts_rsp_body []byte) {
+func TextToSpeechManager(w http.ResponseWriter, alphaResp io.ReadCloser) []byte {
+	ttsUri := "http://localhost:3003/tts"
+
+	ttsReq, err := http.NewRequest("POST", ttsUri, alphaResp)
+	CheckErr(w, err, http.StatusBadRequest) // the request was malformed
+
+	ttsReq.Header.Set("Content-Type", "application/json")
+
+	ttsResp, err := http.DefaultClient.Do(ttsReq)
+	CheckErr(w, err, http.StatusBadRequest) // the server did not understand the request
+
+	if ttsResp.StatusCode != http.StatusOK {
+		err := errors.New("Something went wrong with the text-to-speech microservice!") // handle error for failed stt query
+		CheckErr(w, err, ttsResp.StatusCode)                                            // pass the stt error code to the alexa microservice response header
+	}
+
+	defer ttsResp.Body.Close()
+
+	ttsRespBody, err := ioutil.ReadAll(ttsResp.Body)
+	CheckErr(w, err, http.StatusBadRequest) // the server cannot process the request due to something that is perceived to be a client error
+	println(string(ttsRespBody))            // check response is received from speech-to-text microservice
+
+	return ttsRespBody
+}
+
+func AlexaResponse(w http.ResponseWriter, ttsRespBody []byte) {
 	t := map[string]interface{}{}
-	err := json.Unmarshal(tts_rsp_body, &t)
-	if err != nil {
-		panic(err)
-	}
+	err := json.Unmarshal(ttsRespBody, &t)
+	CheckErr(w, err, http.StatusBadRequest) // could not decode json response due to perceived client error
 
 	w.Header().Set("Content-Type", "application/json") // return microservice response as json
 	w.WriteHeader(http.StatusOK)
@@ -91,7 +113,7 @@ func AlexaResponse(w http.ResponseWriter, tts_rsp_body []byte) {
 func AlexaHandler() {
 	r := mux.NewRouter()
 	// document
-	r.HandleFunc("/alexa", Alexa).Methods("POST")
+	r.HandleFunc("/alexa", ProcessAlexa).Methods("POST")
 	http.ListenAndServe(":3000", r)
 	//	3001 / alpha
 	//	3002 / stt

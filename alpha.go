@@ -27,30 +27,30 @@ func ProcessAlpha(w http.ResponseWriter, r *http.Request) {
 
 	textQuery := t["text"].(string)
 
-	alphaResponse, wolframStatus := AlphaService(w, textQuery)
+	alphaResp, wolframStatus := AlphaService(w, textQuery)
 
-	AlphaResponse(w, alphaResponse, wolframStatus)
+	AlphaResponse(w, alphaResp, wolframStatus)
 }
 
 func AlphaService(w http.ResponseWriter, textQuery string) (string, int) {
 	println(textQuery)                                                     // check the question
 	alphaURI := URI + "?appid=" + KEY + "&i=" + url.QueryEscape(textQuery) // html encoded string
 
-	wolframResponse, err := http.Get(alphaURI)
+	wolframResp, err := http.Get(alphaURI)
 	CheckErr(w, err, http.StatusBadRequest)
 
-	CheckStatusError(wolframResponse.StatusCode)
+	CheckStatusError(wolframResp.StatusCode)
 	// println(wolframResponse.StatusCode) // determine if the wolfram alpha api returned the correct response
 
-	defer wolframResponse.Body.Close() // delay the execution of the function until the nearby functions returns
+	defer wolframResp.Body.Close() // delay the execution of the function until the nearby functions returns
 
-	responseData, err := ioutil.ReadAll(wolframResponse.Body) // read the body of the response returned from the wolfram api
+	respBody, err := ioutil.ReadAll(wolframResp.Body) // read the body of the response returned from the wolfram api
 	CheckErr(w, err, http.StatusBadRequest)
 
-	responseString := string(responseData)
-	println(responseString)
+	respData := string(respBody)
+	println(respData)
 
-	return responseString, wolframResponse.StatusCode
+	return respData, wolframResp.StatusCode
 }
 
 func CheckStatusError(status int) {
@@ -71,8 +71,8 @@ func CheckStatusError(status int) {
 	}
 }
 
-func AlphaResponse(w http.ResponseWriter, alphaResponse string, wolframStatus int) {
-	u := map[string]interface{}{"text": alphaResponse}
+func AlphaResponse(w http.ResponseWriter, alphaResp string, wolframStatus int) {
+	u := map[string]interface{}{"text": alphaResp}
 	w.Header().Set("Content-Type", "application/json") // return microservice response as json
 	w.WriteHeader(wolframStatus)                       // copy the status code returned from wolfram alpha short answers api
 	json.NewEncoder(w).Encode(u)                       // encode string text as json object
