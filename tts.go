@@ -30,10 +30,11 @@ type voice struct {
 	Name  string `xml:"name,attr"`
 }
 
-func CheckErr(w http.ResponseWriter, e error, err_resp int) {
+func CheckErr(w http.ResponseWriter, e error, errResp int) {
 	if e != nil {
 		println(e.Error())
-		w.WriteHeader(err_resp) // tells our microservice what error response code to return
+		// println(errResp)
+		w.WriteHeader(errResp) // tells our microservice what error response code to return
 	}
 }
 
@@ -42,60 +43,60 @@ func ExtractText(w http.ResponseWriter, r *http.Request) string {
 	err := json.NewDecoder(r.Body).Decode(&t)
 	CheckErr(w, err, http.StatusBadRequest) // could not decode json response due to perceived client error
 
-	answer_text, ok := t["text"].(string)
+	answerText, ok := t["text"].(string)
 
 	if !ok {
 		err = errors.New("Object contains no field 'text'") // handle error for incorrect json object
 		CheckErr(w, err, http.StatusBadRequest)
 	}
 
-	println(answer_text)
-	return answer_text
+	println(answerText)
+	return answerText
 }
 
-func TextToSpeech(w http.ResponseWriter, text []byte) string {
+func TextToSpeech(w http.ResponseWriter, textSSML []byte) string {
 	client := &http.Client{}
-	req, err := http.NewRequest("POST", URI, bytes.NewBuffer(text))
+	ttsReq, err := http.NewRequest("POST", URI, bytes.NewBuffer(textSSML))
 	CheckErr(w, err, http.StatusBadRequest) // the request was malformed
 
-	req.Header.Set("Content-Type", "application/ssml+xml")
-	req.Header.Set("Ocp-Apim-Subscription-Key", KEY)
-	req.Header.Set("X-Microsoft-OutputFormat", "riff-16khz-16bit-mono-pcm")
+	ttsReq.Header.Set("Content-Type", "application/ssml+xml")
+	ttsReq.Header.Set("Ocp-Apim-Subscription-Key", KEY)
+	ttsReq.Header.Set("X-Microsoft-OutputFormat", "riff-16khz-16bit-mono-pcm")
 
-	rsp, err := client.Do(req)
+	ttsResp, err := client.Do(ttsReq)
 	CheckErr(w, err, http.StatusBadRequest) // the server did not understand the request
 
-	defer rsp.Body.Close() // defer ensures the response body is closed even in case of runtime error during parsing of response
-
 	// the request was not successful
-	if rsp.StatusCode != http.StatusOK {
-		CheckStatusErr(rsp.StatusCode) // long text error message
+	if ttsResp.StatusCode != http.StatusOK {
+		CheckStatusErr(ttsResp.StatusCode) // long text error message
 		err = errors.New("Cannot convert text to speech!")
-		CheckErr(w, err, rsp.StatusCode) // pass the microsoft error code to our own microservice response header
+		CheckErr(w, err, ttsResp.StatusCode) // pass the microsoft error code to our own microservice response header
 	}
 
-	answer_speech, err := ioutil.ReadAll(rsp.Body)
-	CheckErr(w, err, http.StatusBadRequest)                            // the server cannot process the request due to something that is perceived to be a client error
-	encoded_speech := base64.StdEncoding.EncodeToString(answer_speech) // converts the string to base64 encoded wav
-	return encoded_speech
+	defer ttsResp.Body.Close() // defer ensures the response body is closed even in case of runtime error during parsing of response
+
+	ttsRespBody, err := ioutil.ReadAll(ttsResp.Body)
+	CheckErr(w, err, http.StatusBadRequest)                        // the server cannot process the request due to something that is perceived to be a client error
+	answerSpeech := base64.StdEncoding.EncodeToString(ttsRespBody) // converts the string to base64 encoded wav
+	return answerSpeech
 }
 
-func CreateSSML(w http.ResponseWriter, text string) []byte {
+func CreateSSML(w http.ResponseWriter, answerText string) []byte {
 	speak := &speak{
 		Version: "1.0",
 		Lang:    "en-US",
 		Voice: voice{
-			Voice: text,
+			Voice: answerText,
 			Lang:  "en-US",
 			Name:  "en-US-JennyNeural",
 		},
 	}
 
-	text_xml, err := xml.MarshalIndent(speak, "", "    ")
-	CheckErr(w, err, http.StatusBadRequest) // could not generate the xml request file due to perceived client error
+	textSSML, err := xml.MarshalIndent(speak, "", "    ") // Speech Synthesis Markup Language
+	CheckErr(w, err, http.StatusBadRequest)               // could not generate the xml request file due to perceived client error
 
-	// println(string(text_xml))
-	return text_xml
+	// println(string(textSSML))
+	return textSSML
 }
 
 func CheckStatusErr(err_status int) {
@@ -127,10 +128,10 @@ func TTSResponse(w http.ResponseWriter, answer_speech string) {
 }
 
 func ProcessTTS(w http.ResponseWriter, r *http.Request) {
-	answer_text := ExtractText(w, r)
-	ssml := CreateSSML(w, answer_text) // Speech Synthesis Markup Language
-	answer_speech := TextToSpeech(w, ssml)
-	TTSResponse(w, answer_speech)
+	answerText := ExtractText(w, r)
+	textSSML := CreateSSML(w, answerText)
+	answerSpeech := TextToSpeech(w, textSSML)
+	TTSResponse(w, answerSpeech)
 }
 
 func TTSHandler() {

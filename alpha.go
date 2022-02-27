@@ -13,10 +13,11 @@ const (
 	KEY = ""
 )
 
-func CheckErr(w http.ResponseWriter, e error, err_resp int) {
+func CheckErr(w http.ResponseWriter, e error, errResp int) {
 	if e != nil {
 		println(e.Error())
-		w.WriteHeader(err_resp) // tells our microservice what error response code to return
+		// println(errResp)
+		w.WriteHeader(errResp) // tells our microservice what error response code to return
 	}
 }
 
@@ -44,13 +45,13 @@ func AlphaService(w http.ResponseWriter, textQuery string) (string, int) {
 
 	defer wolframResp.Body.Close() // delay the execution of the function until the nearby functions returns
 
-	respBody, err := ioutil.ReadAll(wolframResp.Body) // read the body of the response returned from the wolfram api
+	wolframRespBody, err := ioutil.ReadAll(wolframResp.Body) // read the body of the response returned from the wolfram api
 	CheckErr(w, err, http.StatusBadRequest)
 
-	respData := string(respBody)
-	println(respData)
+	wolframRespData := string(wolframRespBody)
+	println(wolframRespData)
 
-	return respData, wolframResp.StatusCode
+	return wolframRespData, wolframResp.StatusCode
 }
 
 func CheckStatusError(status int) {
