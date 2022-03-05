@@ -43,7 +43,7 @@ func SpeechToTextManager(r *http.Request) ([]byte, error, int) {
 	}
 
 	if sttResp.StatusCode != http.StatusOK {
-		err := errors.New("The speech-to-text microservice failed to handle the query!") // handle error for failed stt query
+		err = errors.New("The speech-to-text microservice failed to handle the query!") // handle error for failed stt query
 		if err != nil {
 			return nil, err, sttResp.StatusCode // pass the stt error code to the alexa microservice response header
 		}
@@ -77,7 +77,7 @@ func AlphaManager(sttRespBody []byte) ([]byte, error, int) {
 	}
 
 	if alphaResp.StatusCode != http.StatusOK {
-		err := errors.New("The alpha microservice failed to handle the query!") // handle error for failed alpha query
+		err = errors.New("The alpha microservice failed to handle the query!") // handle error for failed alpha query
 		if err != nil {
 			return nil, err, alphaResp.StatusCode // pass the alpha error code to the alexa microservice response header
 		}
@@ -111,7 +111,7 @@ func TextToSpeechManager(alphaRespBody []byte) ([]byte, error, int) {
 	}
 
 	if ttsResp.StatusCode != http.StatusOK {
-		err := errors.New("The text-to-speech microservice failed to handle the request!") // handle error for failed tts query
+		err = errors.New("The text-to-speech microservice failed to handle the request!") // handle error for failed tts query
 		if err != nil {
 			return nil, err, ttsResp.StatusCode // pass the tts error code to the alexa microservice response header
 		}

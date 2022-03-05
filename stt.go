@@ -107,7 +107,7 @@ func CheckResponse(responseText []byte) (string, error, int) {
 	t := map[string]interface{}{}
 	err := json.Unmarshal(responseText, &t)
 	if err != nil {
-		return "", err, http.StatusBadRequest // could not decode json response due to perceived client error
+		return "", err, http.StatusInternalServerError // could not decode json response due to perceived client error
 	}
 
 	recStatus, ok := t["RecognitionStatus"].(string)
@@ -138,18 +138,15 @@ func CheckSTTStatusErr(errStatus int) error {
 	// println(errStatus)
 	switch errStatus {
 	case http.StatusBadRequest: // 400
-		err := errors.New("Bad request - The language code wasn't provided, the language isn't supported, " +
+		return errors.New("Bad request - The language code wasn't provided, the language isn't supported, " +
 			"or the audio file is invalid (for example).")
-		return err
 	case http.StatusUnauthorized: // 401
-		err := errors.New("Unauthorized - A subscription key or an authorization token is invalid in the specified region, " +
+		return errors.New("Unauthorized - A subscription key or an authorization token is invalid in the specified region, " +
 			"or an endpoint is invalid.")
-		return err
 	case http.StatusForbidden: // 403
-		err := errors.New("Forbidden - A subscription key or authorization token is missing.")
-		return err
+		return errors.New("Forbidden - A subscription key or authorization token is missing.")
 	}
-	return nil
+	return errors.New("Microsoft speech-to-text could not determine the specific error - Refer to error status code!")
 }
 
 func RecognitionErr(recStatus string) error {
@@ -157,26 +154,22 @@ func RecognitionErr(recStatus string) error {
 	// Determines the error type from the response parameters for RecognitionStatus
 	switch {
 	case recStatus == "NoMatch":
-		err := errors.New("Speech was detected in the audio stream, but no words from the target language were matched. " +
+		return errors.New("Speech was detected in the audio stream, but no words from the target language were matched. " +
 			"This status usually means that the recognition language is different from the language that the user is speaking.")
-		return err
 	case recStatus == "InitialSilenceTimeout":
-		err := errors.New("The start of the audio stream contained only silence, and the service timed out while waiting for speech.")
-		return err
+		return errors.New("The start of the audio stream contained only silence, and the service timed out while waiting for speech.")
 	case recStatus == "BabbleTimeout":
-		err := errors.New("The start of the audio stream contained only noise, and the service timed out while waiting for speech.")
-		return err
+		return errors.New("The start of the audio stream contained only noise, and the service timed out while waiting for speech.")
 	case recStatus == "Error":
-		err := errors.New("The recognition service encountered an internal error and could not continue. Try again if possible.")
-		return err
+		return errors.New("The recognition service encountered an internal error and could not continue. Try again if possible.")
 	}
-	return nil
+	return errors.New("Microsoft speech-to-text could not determine the recognition error!")
 }
 
 func STTResponse(w http.ResponseWriter, questionText string) {
+	w.WriteHeader(http.StatusOK)
 	u := map[string]interface{}{"text": questionText}
 	w.Header().Set("Content-Type", "application/json") // return microservice response as json
-	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(u)
 }
 

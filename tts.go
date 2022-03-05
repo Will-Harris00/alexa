@@ -30,58 +30,81 @@ type voice struct {
 	Name  string `xml:"name,attr"`
 }
 
-func CheckErr(w http.ResponseWriter, e error, errResp int) {
-	if e != nil {
-		println(e.Error())
-		// println(errResp)
-		w.WriteHeader(errResp) // tells our microservice what error response code to return
+func ProcessTTS(w http.ResponseWriter, r *http.Request) {
+	answerText, err, errCode := ExtractText(r)
+	if err != nil {
+		TTSErrResponse(w, err, errCode) // return an error response from the microservice
+	}
+
+	textSSML, err, errCode := CreateSSML(answerText)
+	if err != nil {
+		TTSErrResponse(w, err, errCode) // return an error response from the microservice
+	}
+
+	answerSpeech, err, errCode := TextToSpeech(textSSML)
+	if err != nil {
+		TTSErrResponse(w, err, errCode) // return an error response from the microservice
+	} else {
+		TTSResponse(w, answerSpeech) // success
 	}
 }
 
-func ExtractText(w http.ResponseWriter, r *http.Request) string {
+func ExtractText(r *http.Request) (string, error, int) {
 	t := map[string]interface{}{}
 	err := json.NewDecoder(r.Body).Decode(&t)
-	CheckErr(w, err, http.StatusBadRequest) // could not decode json response due to perceived client error
+	if err != nil {
+		return "", err, http.StatusBadRequest // could not decode json query due to perceived client error
+	}
 
 	answerText, ok := t["text"].(string)
 
-	if !ok {
+	if !ok { // text field is not present
 		err = errors.New("Object contains no field 'text'") // handle error for incorrect json object
-		CheckErr(w, err, http.StatusBadRequest)
+		return "", err, http.StatusBadRequest
 	}
 
 	println(answerText)
-	return answerText
+
+	return answerText, nil, 0
 }
 
-func TextToSpeech(w http.ResponseWriter, textSSML []byte) string {
+func TextToSpeech(textSSML []byte) (string, error, int) {
 	client := &http.Client{}
 	ttsReq, err := http.NewRequest("POST", URI, bytes.NewBuffer(textSSML))
-	CheckErr(w, err, http.StatusBadRequest) // the request was malformed
+	if err != nil {
+		return "", err, http.StatusBadRequest // the request was malformed
+	}
 
 	ttsReq.Header.Set("Content-Type", "application/ssml+xml")
 	ttsReq.Header.Set("Ocp-Apim-Subscription-Key", KEY)
 	ttsReq.Header.Set("X-Microsoft-OutputFormat", "riff-16khz-16bit-mono-pcm")
 
 	ttsResp, err := client.Do(ttsReq)
-	CheckErr(w, err, http.StatusBadRequest) // the server did not understand the request
+	if err != nil {
+		return "", err, http.StatusNotFound // microsoft text-to-speech could not be reached
+	}
 
 	// the request was not successful
 	if ttsResp.StatusCode != http.StatusOK {
-		CheckStatusErr(ttsResp.StatusCode) // long text error message
-		err = errors.New("Cannot convert text to speech!")
-		CheckErr(w, err, ttsResp.StatusCode) // pass the microsoft error code to our own microservice response header
+		err = CheckTTSStatusErr(ttsResp.StatusCode) // long text error message
+		if err != nil {
+			return "", err, ttsResp.StatusCode // pass the microsoft tts error code to our own microservice response header
+		}
 	}
 
 	defer ttsResp.Body.Close() // defer ensures the response body is closed even in case of runtime error during parsing of response
 
 	ttsRespBody, err := ioutil.ReadAll(ttsResp.Body)
-	CheckErr(w, err, http.StatusBadRequest)                        // the server cannot process the request due to something that is perceived to be a client error
+	if err != nil {
+		return "", err, http.StatusInternalServerError // could not read the body of the response, perceived to be client error
+	}
+
 	answerSpeech := base64.StdEncoding.EncodeToString(ttsRespBody) // converts the string to base64 encoded wav
-	return answerSpeech
+
+	return answerSpeech, nil, 0
 }
 
-func CreateSSML(w http.ResponseWriter, answerText string) []byte {
+func CreateSSML(answerText string) ([]byte, error, int) {
 	speak := &speak{
 		Version: "1.0",
 		Lang:    "en-US",
@@ -93,45 +116,48 @@ func CreateSSML(w http.ResponseWriter, answerText string) []byte {
 	}
 
 	textSSML, err := xml.MarshalIndent(speak, "", "    ") // Speech Synthesis Markup Language
-	CheckErr(w, err, http.StatusBadRequest)               // could not generate the xml request file due to perceived client error
+	if err != nil {
+		return nil, err, http.StatusBadRequest // could not generate the xml request file due to perceived client error
+	}
 
 	// println(string(textSSML))
-	return textSSML
+
+	return textSSML, nil, 0
 }
 
-func CheckStatusErr(err_status int) {
+func CheckTTSStatusErr(errStatus int) error {
 	// https://docs.microsoft.com/en-us/azure/cognitive-services/speech-service/rest-text-to-speech
 	// error handling for each status code
-	// println(rsp.StatusCode)
-	if err_status == http.StatusBadRequest { // 400
-		println("Bad request - A required parameter is missing, empty, or null. " +
+	// println(errStatus)
+	switch errStatus {
+	case http.StatusBadRequest: // 400
+		return errors.New("Bad request - A required parameter is missing, empty, or null. " +
 			"Or, the value passed to either a required or optional parameter is invalid. " +
 			"A common reason is a header that's too long.")
-	}
-	if err_status == http.StatusUnauthorized { // 401
-		println("Unauthorized - The request is not authorized. " +
+	case http.StatusUnauthorized: // 401
+		return errors.New("Unauthorized - The request is not authorized. " +
 			"Make sure your subscription key or token is valid and in the correct region.")
+	case http.StatusTooManyRequests: // 429
+		return errors.New("Too many requests - You have exceeded the quota or rate of requests allowed for your subscription.")
+	case http.StatusBadGateway: // 502
+		return errors.New("Bad gateway - There's a network or server-side problem. This status might also indicate invalid headers.")
 	}
-	if err_status == http.StatusTooManyRequests { // 429
-		println("Too many requests - You have exceeded the quota or rate of requests allowed for your subscription.")
-	}
-	if err_status == http.StatusBadGateway { // 502
-		println("Bad gateway - There's a network or server-side problem. This status might also indicate invalid headers.")
-	}
+	return errors.New("Microsoft text-to-speech could not determine the specific error - Refer to error status code!")
 }
 
 func TTSResponse(w http.ResponseWriter, answer_speech string) {
+	w.WriteHeader(http.StatusOK)
 	u := map[string]interface{}{"speech": answer_speech}
 	w.Header().Set("Content-Type", "application/json") // return microservice response as json
-	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(u)
 }
 
-func ProcessTTS(w http.ResponseWriter, r *http.Request) {
-	answerText := ExtractText(w, r)
-	textSSML := CreateSSML(w, answerText)
-	answerSpeech := TextToSpeech(w, textSSML)
-	TTSResponse(w, answerSpeech)
+func TTSErrResponse(w http.ResponseWriter, err error, errCode int) {
+	w.WriteHeader(errCode)
+	w.Write([]byte(err.Error()))
+	w.Header().Set("Content-Type", "text") // return error message as text
+	println(errCode)
+	println(err.Error()) // display the error message on the console
 }
 
 func TTSHandler() {

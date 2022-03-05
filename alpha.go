@@ -64,23 +64,20 @@ func AlphaService(textQuery string) ([]byte, error, int) {
 func CheckAlphaStatusErr(errStatus int) error {
 	switch errStatus {
 	case http.StatusBadRequest: // 400 - No input.  Please specify the input using the 'i' query parameter.
-		err := errors.New("This status indicates that the API did not find an input parameter while parsing. " +
+		return errors.New("This status indicates that the API did not find an input parameter while parsing. " +
 			"In most cases, this can be fixed by checking that you have used the correct syntax for " +
 			"including the i parameter.")
-		return err
 	case http.StatusForbidden: // 403 - Error 1: Invalid appid or Error 2: Appid missing
-		err := errors.New("This error is returned when a request contains an invalid option for the appid parameter. " +
+		return errors.New("This error is returned when a request contains an invalid option for the appid parameter. " +
 			"Double-check that your AppID is typed correctly and that your appid parameter is using the correct syntax.")
-		return err
 	case http.StatusNotImplemented: // 501 - No short answer available
-		err := errors.New("This status is returned if a given input value cannot be interpreted by this API. " +
+		return errors.New("This status is returned if a given input value cannot be interpreted by this API. " +
 			"This is commonly caused by input that is misspelled, poorly formatted or otherwise unintelligible. " +
 			"Because this API is designed to return a single result, this message may appear if no sufficiently " +
 			"short result can be found. You may occasionally receive this status when requesting information on " +
 			"topics that are restricted or not covered.")
-		return err
 	}
-	return nil
+	return errors.New("The precise error could not be determined by wolfram alpha - Refer to error status code!")
 }
 
 func AlphaResponse(w http.ResponseWriter, alphaResp []byte) {
