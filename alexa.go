@@ -11,17 +11,17 @@ import (
 func ProcessAlexa(w http.ResponseWriter, r *http.Request) {
 	sttRespBody, err, errCode := SpeechToTextManager(r)
 	if err != nil {
-		ErrorResponse(w, err, errCode) // return an error response from the microservice
+		AlexaErrResponse(w, err, errCode) // return an error response from the microservice
 	}
 
 	alphaRespBody, err, errCode := AlphaManager(sttRespBody)
 	if err != nil {
-		ErrorResponse(w, err, errCode) // return an error response from the microservice
+		AlexaErrResponse(w, err, errCode) // return an error response from the microservice
 	}
 
 	ttsRespBody, err, errCode := TextToSpeechManager(alphaRespBody)
 	if err != nil {
-		ErrorResponse(w, err, errCode) // return an error response from the microservice
+		AlexaErrResponse(w, err, errCode) // return an error response from the microservice
 	} else {
 		AlexaResponse(w, ttsRespBody) // success
 	}
@@ -136,7 +136,7 @@ func AlexaResponse(w http.ResponseWriter, ttsRespBody []byte) {
 	println("Play the answer.wav file to hear the solution to your question!")
 }
 
-func ErrorResponse(w http.ResponseWriter, err error, errCode int) {
+func AlexaErrResponse(w http.ResponseWriter, err error, errCode int) {
 	w.WriteHeader(errCode)
 	w.Write([]byte(err.Error()))
 	w.Header().Set("Content-Type", "text") // return error message as text
