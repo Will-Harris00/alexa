@@ -16,50 +16,53 @@ const (
 
 func ProcessAlpha(w http.ResponseWriter, r *http.Request) {
 	t := map[string]interface{}{}
-	err := json.NewDecoder(r.Body).Decode((&t))
+	err := json.NewDecoder(r.Body).Decode((&t)) // could not decode json query due to perceived client error
 	if err != nil {
 		AlphaErrResponse(w, err, http.StatusBadRequest) // bad request due to perceived client error
 	} else {
 		textQuery := t["text"].(string)
 
-		alphaResp, wolframStatus, err, errCode := AlphaService(textQuery)
+		alphaResp, err, errCode := AlphaService(textQuery)
 		if err != nil {
 			AlphaErrResponse(w, err, errCode) // return an error response from the microservice
 		} else {
-			AlphaResponse(w, alphaResp, wolframStatus) // success
+			AlphaResponse(w, alphaResp) // success
 		}
 	}
 }
 
-func AlphaService(textQuery string) ([]byte, int, error, int) {
+func AlphaService(textQuery string) ([]byte, error, int) {
 	println(textQuery)                                                     // check the question
 	alphaURI := URI + "?appid=" + KEY + "&i=" + url.QueryEscape(textQuery) // html encoded string
 
 	wolframResp, err := http.Get(alphaURI)
 	if err != nil {
-		return nil, 0, err, http.StatusBadRequest // the request was malformed
+		return nil, err, http.StatusBadRequest // the request was malformed
 	}
 
 	// println(wolframResponse.StatusCode) // determine if the wolfram alpha api returned the correct response
-	err = CheckStatusError(wolframResp.StatusCode)
-	if err != nil {
-		return nil, 0, err, wolframResp.StatusCode // copy the status code returned from wolfram alpha short answers api
+	// the request was not successful
+	if wolframResp.StatusCode != http.StatusOK {
+		err = CheckAlphaStatusErr(wolframResp.StatusCode)
+		if err != nil {
+			return nil, err, wolframResp.StatusCode // copy the status code returned from wolfram alpha short answers api
+		}
 	}
 
 	defer wolframResp.Body.Close() // delay the execution of the function until the nearby functions returns
 
 	wolframRespBody, err := ioutil.ReadAll(wolframResp.Body) // read the body of the response returned from the wolfram api
 	if err != nil {
-		return nil, 0, err, http.StatusInternalServerError // could not read the body of the response, perceived to be client error
+		return nil, err, http.StatusInternalServerError // could not read the body of the response, perceived to be client error
 	}
 
 	println(string(wolframRespBody))
 
-	return wolframRespBody, wolframResp.StatusCode, nil, 0
+	return wolframRespBody, nil, 0
 }
 
-func CheckStatusError(status int) error {
-	switch status {
+func CheckAlphaStatusErr(errStatus int) error {
+	switch errStatus {
 	case http.StatusBadRequest: // 400 - No input.  Please specify the input using the 'i' query parameter.
 		err := errors.New("This status indicates that the API did not find an input parameter while parsing. " +
 			"In most cases, this can be fixed by checking that you have used the correct syntax for " +
@@ -80,7 +83,7 @@ func CheckStatusError(status int) error {
 	return nil
 }
 
-func AlphaResponse(w http.ResponseWriter, alphaResp []byte, wolframStatus int) {
+func AlphaResponse(w http.ResponseWriter, alphaResp []byte) {
 	w.WriteHeader(http.StatusOK)
 	u := map[string]interface{}{"text": string(alphaResp)}
 	w.Header().Set("Content-Type", "application/json") // return microservice response as json
